@@ -10,7 +10,8 @@
 
   var LABELS = {
     science: "Science", history: "History", language: "Language", math: "Math",
-    ideas: "Ideas", technology: "Technology", nature: "Nature", random: "Wikipedia"
+    ideas: "Ideas", technology: "Technology", nature: "Nature", random: "Wikipedia",
+    tech: "Tech", trivia: "Trivia", quote: "Quote", number: "Number"
   };
 
   var feed = document.getElementById("feed");
@@ -103,15 +104,150 @@
       curated: false
     };
   }
-  function fetchWikiBatch(n) {
+  function fetchWikiRaw() {
     var tasks = [];
-    for (var i = 0; i < n; i++) {
+    for (var i = 0; i < 5; i++) {
       tasks.push(fetch(WIKI_ENDPOINT, { cache: "no-store" })
         .then(function (r) { return r.ok ? r.json() : null; })
         .catch(function () { return null; }));
     }
-    return Promise.all(tasks).then(function (arr) {
-      return arr.map(normalizeWiki).filter(Boolean);
+    return Promise.all(tasks).then(function (arr) { return arr.filter(Boolean); });
+  }
+
+  function makeSource(fetchRemote, normalize) {
+    var pool = [];
+    var pending = null;
+    function refill() {
+      if (pending) return pending;
+      pending = fetchRemote().then(function (raw) {
+        pending = null;
+        if (raw) for (var i = 0; i < raw.length; i++) {
+          try { var f = normalize(raw[i]); if (f) pool.push(f); } catch (e) {}
+        }
+      }).catch(function () { pending = null; });
+      return pending;
+    }
+    return {
+      fetch: function (n) {
+        var out = [];
+        while (out.length < n && pool.length) out.push(pool.shift());
+        if (out.length >= n) return Promise.resolve(out);
+        return refill().then(function () {
+          while (out.length < n && pool.length) out.push(pool.shift());
+          return out;
+        });
+      }
+    };
+  }
+
+  function normHn(hit) {
+    if (!hit || !hit.title) return null;
+    return {
+      id: "hn:" + hit.objectID,
+      title: "Hacker News",
+      text: hit.title,
+      category: "tech",
+      source: hit.url || ("https://news.ycombinator.com/item?id=" + hit.objectID),
+      curated: false
+    };
+  }
+  function fetchHnRaw() {
+    return fetch("https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=30", { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { return (j && j.hits) ? j.hits : []; })
+      .catch(function () { return []; });
+  }
+
+  function normQuote(q) {
+    if (!q || !q.quote) return null;
+    var text = String(q.quote);
+    if (text.length > 180) return null;
+    var author = q.author || "Unknown";
+    return {
+      id: "quote:" + q.id,
+      title: author,
+      text: "\u201C" + text + "\u201D",
+      category: "quote",
+      source: "https://en.wikipedia.org/wiki/Special:Search?search=" + encodeURIComponent(author),
+      curated: false
+    };
+  }
+  function fetchQuoteRaw() {
+    var skip = Math.floor(Math.random() * 1400);
+    return fetch("https://dummyjson.com/quotes?limit=20&skip=" + skip, { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { return (j && j.quotes) ? j.quotes : []; })
+      .catch(function () { return []; });
+  }
+
+  function normNumber(d) {
+    if (!d || !d.text || d.found === false) return null;
+    return {
+      id: "num:" + d.number + ":" + d.category,
+      title: "Number \u00b7 " + d.number,
+      text: d.text,
+      category: "number",
+      source: "https://numbersapi.com/" + d.number,
+      curated: false
+    };
+  }
+  function fetchNumbersRaw() {
+    var urls = [];
+    for (var i = 0; i < 5; i++) urls.push("https://numbersapi.com/random/trivia?json");
+    return Promise.all(urls.map(function (u) {
+      return fetch(u, { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+    })).then(function (arr) { return arr.filter(Boolean); });
+  }
+
+  function b64decode(s) {
+    try { return new TextDecoder().decode(Uint8Array.from(atob(s), function (c) { return c.charCodeAt(0); })); }
+    catch (e) { return s; }
+  }
+  function normTrivia(r) {
+    if (!r || !r.question) return null;
+    var q = b64decode(r.question);
+    var a = b64decode(r.correct_answer || "");
+    var c = b64decode(r.category || "");
+    if (q.length > 200) return null;
+    return {
+      id: "trivia:" + q.slice(0, 48),
+      title: c || "Trivia",
+      text: q,
+      answer: a,
+      category: "trivia",
+      source: "https://opentdb.com/",
+      curated: false
+    };
+  }
+  function fetchTriviaRaw() {
+    return fetch("https://opentdb.com/api.php?amount=10&type=multiple&encode=base64", { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { return (j && j.results) ? j.results : []; })
+      .catch(function () { return []; });
+  }
+
+  var SOURCES = [
+    makeSource(fetchWikiRaw, normalizeWiki),
+    makeSource(fetchHnRaw, normHn),
+    makeSource(fetchQuoteRaw, normQuote),
+    makeSource(fetchTriviaRaw, normTrivia),
+    makeSource(fetchNumbersRaw, normNumber)
+  ];
+  var sourceCursor = 0;
+
+  function fetchMixed(count) {
+    var collected = [];
+    function attempt(i) {
+      if (i >= SOURCES.length || collected.length >= count) return Promise.resolve(collected);
+      var src = SOURCES[(sourceCursor + i) % SOURCES.length];
+      return src.fetch(count - collected.length).then(function (items) {
+        collected = collected.concat(items);
+        return attempt(i + 1);
+      }).catch(function () { return attempt(i + 1); });
+    }
+    return attempt(0).then(function (items) {
+      sourceCursor = (sourceCursor + 1) % SOURCES.length;
+      return shuffle(items);
     });
   }
 
@@ -143,12 +279,15 @@
     pill.className = "card__pill";
     var text = document.createElement("p");
     text.className = "card__text";
+    var answer = document.createElement("p");
+    answer.className = "card__answer";
     var src = document.createElement("a");
     src.className = "card__source";
     src.target = "_blank";
     src.rel = "noopener noreferrer";
     inner.appendChild(pill);
     inner.appendChild(text);
+    inner.appendChild(answer);
     inner.appendChild(src);
     el.appendChild(inner);
     fillCardEl(el, fact);
@@ -158,11 +297,13 @@
   function fillCardEl(el, fact) {
     var pill = el.querySelector(".card__pill");
     var text = el.querySelector(".card__text");
+    var answer = el.querySelector(".card__answer");
     var src = el.querySelector(".card__source");
     if (fact.end) {
       el.classList.add("card--end");
       el.removeAttribute("data-category");
       pill.style.display = "none";
+      answer.style.display = "none";
       src.style.display = "none";
       text.textContent = "That's everything you've saved.";
       el.setAttribute("aria-label", "End");
@@ -174,6 +315,8 @@
     pill.setAttribute("data-category", fact.category);
     el.setAttribute("data-category", fact.category);
     text.textContent = fact.text;
+    if (fact.answer) { answer.textContent = "A: " + fact.answer; answer.style.display = ""; }
+    else { answer.textContent = ""; answer.style.display = "none"; }
     src.style.display = "";
     src.href = fact.source || "#";
     src.textContent = (fact.title ? fact.title : (fact.curated ? "Source" : "Wikipedia")) + " \u2197";
@@ -216,7 +359,7 @@
 
     if (state.mode === "all" && state.online) {
       state.loading = true;
-      fetchWikiBatch(WIKI_BATCH).then(function (batch) {
+      fetchMixed(WIKI_BATCH).then(function (batch) {
         state.loading = false;
         if (batch.length === 0) appendFacts(takeSeed(WIKI_BATCH));
         else appendFacts(batch);

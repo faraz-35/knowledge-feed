@@ -101,6 +101,10 @@ body { overflow: hidden; }
 .card__pill[data-category="technology"] { --pill-c: var(--c-technology); }
 .card__pill[data-category="nature"]     { --pill-c: var(--c-nature); }
 .card__pill[data-category="random"]     { --pill-c: var(--c-random); }
+.card__pill[data-category="tech"]       { --pill-c: #6cb6ff; }
+.card__pill[data-category="trivia"]     { --pill-c: #f5a623; }
+.card__pill[data-category="quote"]      { --pill-c: #c490e4; }
+.card__pill[data-category="number"]     { --pill-c: #4ec9b0; }
 
 .card__text {
   font-family: var(--serif);
@@ -110,6 +114,14 @@ body { overflow: hidden; }
   letter-spacing: -0.01em;
   margin: 0;
   color: var(--text);
+}
+
+.card__answer {
+  font-family: var(--sans);
+  font-size: clamp(0.95rem, 2.6vw, 1.15rem);
+  color: var(--text-dim);
+  margin: 0;
+  opacity: 0.85;
 }
 
 .card__source {
