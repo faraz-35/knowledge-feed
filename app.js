@@ -375,21 +375,44 @@
 
   var installBtn = document.getElementById("install-btn");
   var deferredPrompt = null;
+  var isStandalone = window.matchMedia("(display-mode: standalone)").matches ||
+                     window.matchMedia("(display-mode: minimal-ui)").matches ||
+                     window.navigator.standalone === true;
+
+  function showMenuHint() {
+    var existing = document.querySelector(".toast");
+    if (existing) existing.parentNode.removeChild(existing);
+    var t = document.createElement("div");
+    t.className = "toast";
+    t.innerHTML = "Install from your browser menu: \u2630 \u2192 <strong>Install</strong> / <strong>Add to Home screen</strong>";
+    document.body.appendChild(t);
+    window.setTimeout(function () { t.classList.add("toast--hide"); }, 3400);
+    window.setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 3900);
+  }
+
   window.addEventListener("beforeinstallprompt", function (e) {
     e.preventDefault();
     deferredPrompt = e;
     if (installBtn) installBtn.hidden = false;
   });
-  if (installBtn) {
+  if (installBtn && !isStandalone) {
     installBtn.addEventListener("click", function () {
-      installBtn.hidden = true;
-      if (!deferredPrompt) return;
-      deferredPrompt.prompt();
-      deferredPrompt.userChoice.then(function () { deferredPrompt = null; }).catch(function () {});
+      if (deferredPrompt) {
+        installBtn.hidden = true;
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(function () { deferredPrompt = null; }).catch(function () {});
+      } else {
+        showMenuHint();
+      }
     });
     window.addEventListener("appinstalled", function () {
       installBtn.hidden = true;
       deferredPrompt = null;
     });
+    window.setTimeout(function () {
+      if (!deferredPrompt && installBtn.hidden) installBtn.hidden = false;
+    }, 5000);
+  } else if (installBtn) {
+    installBtn.hidden = true;
   }
 })();

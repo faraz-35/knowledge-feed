@@ -218,6 +218,28 @@ body { overflow: hidden; }
 
 .iconbtn--install span { font-weight: 600; color: var(--text); }
 
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(86px + var(--safe-b));
+  transform: translateX(-50%);
+  z-index: 30;
+  max-width: min(90vw, 26rem);
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  padding: 0.7rem 1rem;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
+  opacity: 1;
+  transition: opacity 300ms ease, transform 300ms ease;
+}
+.toast strong { color: var(--accent); }
+.toast--hide { opacity: 0; transform: translateX(-50%) translateY(6px); }
+
 .counter {
   margin: 0;
   padding-left: 4px;
