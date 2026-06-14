@@ -372,4 +372,24 @@
       navigator.serviceWorker.register("sw.js").catch(function () {});
     });
   }
+
+  var installBtn = document.getElementById("install-btn");
+  var deferredPrompt = null;
+  window.addEventListener("beforeinstallprompt", function (e) {
+    e.preventDefault();
+    deferredPrompt = e;
+    if (installBtn) installBtn.hidden = false;
+  });
+  if (installBtn) {
+    installBtn.addEventListener("click", function () {
+      installBtn.hidden = true;
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then(function () { deferredPrompt = null; }).catch(function () {});
+    });
+    window.addEventListener("appinstalled", function () {
+      installBtn.hidden = true;
+      deferredPrompt = null;
+    });
+  }
 })();

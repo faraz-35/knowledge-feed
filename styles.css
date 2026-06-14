@@ -216,6 +216,8 @@ body { overflow: hidden; }
 
 #saved-view.is-active { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 
+.iconbtn--install span { font-weight: 600; color: var(--text); }
+
 .counter {
   margin: 0;
   padding-left: 4px;
