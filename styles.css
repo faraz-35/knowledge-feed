@@ -48,7 +48,6 @@ body { overflow: hidden; }
   overflow-y: scroll;
   overflow-x: hidden;
   scroll-snap-type: y mandatory;
-  scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   position: relative;
@@ -75,13 +74,11 @@ body { overflow: hidden; }
   flex-direction: column;
   align-items: flex-start;
   gap: 1.5rem;
-  opacity: 0.42;
-  transform: translateY(8px);
-  transition: opacity 420ms ease, transform 420ms ease;
+  opacity: 0.5;
+  transition: opacity 260ms ease;
 }
 .card.is-active .card__inner {
   opacity: 1;
-  transform: none;
 }
 
 .card__pill {

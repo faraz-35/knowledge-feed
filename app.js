@@ -2,10 +2,11 @@
   "use strict";
 
   var SEED = window.SEED_FACTS || [];
-  var POOL_SIZE = 7;
   var SAVE_KEY = "kf:saved:v1";
   var WIKI_ENDPOINT = "https://en.wikipedia.org/api/rest_v1/page/random/summary";
   var WIKI_BATCH = 3;
+  var MAX_CARDS = 240;
+  var TRIM_CHUNK = 60;
 
   var LABELS = {
     science: "Science", history: "History", language: "Language", math: "Math",
@@ -13,8 +14,6 @@
   };
 
   var feed = document.getElementById("feed");
-  var spacerTop = document.getElementById("spacer-top");
-  var spacerBottom = document.getElementById("spacer-bottom");
   var emptyEl = document.getElementById("empty");
   var selCategory = document.getElementById("category");
   var savedViewBtn = document.getElementById("saved-view");
@@ -28,7 +27,7 @@
     category: "all",
     facts: [],
     ci: 0,
-    windowStart: -1,
+    trimOffset: 0,
     saved: loadSaved(),
     loading: false,
     online: navigator.onLine
@@ -116,19 +115,104 @@
     });
   }
 
+  /* ---------- DOM cards (static, no recycling) ---------- */
+
+  function cardH() { return feed.clientHeight || window.innerHeight; }
+
+  var io = new IntersectionObserver(function (entries) {
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      if (e.isIntersecting && e.intersectionRatio >= 0.5) {
+        var prev = feed.querySelector(".card.is-active");
+        if (prev && prev !== e.target) prev.classList.remove("is-active");
+        e.target.classList.add("is-active");
+        var idx = +e.target.dataset.absIdx;
+        if (idx !== state.ci) { state.ci = idx; updateChrome(); ensureMore(); }
+        break;
+      }
+    }
+  }, { root: feed, threshold: [0.5] });
+
+  function createCardEl(fact, idx) {
+    var el = document.createElement("article");
+    el.className = "card";
+    el.dataset.absIdx = String(idx);
+    var inner = document.createElement("div");
+    inner.className = "card__inner";
+    var pill = document.createElement("span");
+    pill.className = "card__pill";
+    var text = document.createElement("p");
+    text.className = "card__text";
+    var src = document.createElement("a");
+    src.className = "card__source";
+    src.target = "_blank";
+    src.rel = "noopener noreferrer";
+    inner.appendChild(pill);
+    inner.appendChild(text);
+    inner.appendChild(src);
+    el.appendChild(inner);
+    fillCardEl(el, fact);
+    return el;
+  }
+
+  function fillCardEl(el, fact) {
+    var pill = el.querySelector(".card__pill");
+    var text = el.querySelector(".card__text");
+    var src = el.querySelector(".card__source");
+    if (fact.end) {
+      el.classList.add("card--end");
+      el.removeAttribute("data-category");
+      pill.style.display = "none";
+      src.style.display = "none";
+      text.textContent = "That's everything you've saved.";
+      el.setAttribute("aria-label", "End");
+      return;
+    }
+    el.classList.remove("card--end");
+    pill.style.display = "";
+    pill.textContent = labelFor(fact.category);
+    pill.setAttribute("data-category", fact.category);
+    el.setAttribute("data-category", fact.category);
+    text.textContent = fact.text;
+    src.style.display = "";
+    src.href = fact.source || "#";
+    src.textContent = (fact.title ? fact.title : (fact.curated ? "Source" : "Wikipedia")) + " \u2197";
+    el.setAttribute("aria-label", labelFor(fact.category) + " fact");
+  }
+
+  function mountCard(fact) {
+    var el = createCardEl(fact, state.facts.length - 1);
+    feed.insertBefore(el, emptyEl);
+    io.observe(el);
+  }
+
+  function clearCards() {
+    var cs = feed.querySelectorAll(".card");
+    for (var i = 0; i < cs.length; i++) { io.unobserve(cs[i]); cs[i].remove(); }
+  }
+
   function appendFacts(list) {
     var seen = {};
     for (var i = 0; i < state.facts.length; i++) seen[state.facts[i].id] = true;
     for (var j = 0; j < list.length; j++) {
       var f = list[j];
-      if (f && !seen[f.id]) { state.facts.push(f); seen[f.id] = true; }
+      if (f && !seen[f.id]) { state.facts.push(f); seen[f.id] = true; mountCard(f); }
     }
+  }
+
+  function trimIfLarge() {
+    var cs = feed.querySelectorAll(".card");
+    if (cs.length <= MAX_CARDS) return;
+    var H = cardH();
+    for (var i = 0; i < TRIM_CHUNK; i++) { io.unobserve(cs[i]); cs[i].remove(); }
+    state.trimOffset += TRIM_CHUNK;
+    feed.scrollTop -= TRIM_CHUNK * H;
   }
 
   function ensureMore() {
     if (state.loading) return;
     if (state.mode === "saved") return;
-    if (state.facts.length - state.ci > 6) return;
+    if (state.facts.length - state.ci > 8) return;
 
     if (state.mode === "all" && state.online) {
       state.loading = true;
@@ -136,16 +220,13 @@
         state.loading = false;
         if (batch.length === 0) appendFacts(takeSeed(WIKI_BATCH));
         else appendFacts(batch);
-        scheduleRender();
-        if (state.facts.length - state.ci <= 6) ensureMore();
+        if (state.facts.length - state.ci <= 8) ensureMore();
       }).catch(function () {
         state.loading = false;
         appendFacts(takeSeed(WIKI_BATCH));
-        scheduleRender();
       });
     } else {
       appendFacts(takeSeed(4));
-      scheduleRender();
     }
   }
 
@@ -154,9 +235,10 @@
   function reset(mode, category) {
     state.mode = mode;
     state.category = category || "all";
+    clearCards();
     state.facts = [];
     state.ci = 0;
-    state.windowStart = -1;
+    state.trimOffset = 0;
     deck = shuffle(seedForCategory(state.category));
 
     if (state.mode === "saved") {
@@ -169,80 +251,20 @@
       }
     } else {
       showEmpty(false);
-      var initial = Math.min(seedForCategory(state.category).length, POOL_SIZE + 2);
+      var initial = Math.min(seedForCategory(state.category).length, 11);
       appendFacts(takeSeed(initial));
     }
 
     feed.scrollTop = 0;
+    var first = feed.querySelector(".card");
+    if (first) first.classList.add("is-active");
     savedViewBtn.classList.toggle("is-active", state.mode === "saved");
     savedViewBtn.setAttribute("aria-label", state.mode === "saved" ? "Back to feed" : "View saved facts");
-    scheduleRender();
+    updateChrome();
     ensureMore();
   }
 
-  function getH() { return feed.clientHeight || window.innerHeight; }
-
   function labelFor(cat) { return LABELS[cat] || "Fact"; }
-
-  function fillCard(node, fact, idx) {
-    node.dataset.idx = String(idx);
-    if (fact.end) {
-      node.classList.add("card--end");
-      node.removeAttribute("data-category");
-      var pEnd = node.querySelector(".card__pill"); pEnd.style.display = "none";
-      node.querySelector(".card__source").style.display = "none";
-      node.querySelector(".card__text").textContent = "That's everything you've saved.";
-      node.setAttribute("aria-label", "End");
-      setActive(node, idx);
-      return;
-    }
-    node.classList.remove("card--end");
-    var pill = node.querySelector(".card__pill");
-    pill.style.display = "";
-    pill.textContent = labelFor(fact.category);
-    pill.setAttribute("data-category", fact.category);
-    node.setAttribute("data-category", fact.category);
-    node.querySelector(".card__text").textContent = fact.text;
-    var src = node.querySelector(".card__source");
-    src.style.display = "";
-    src.href = fact.source || "#";
-    src.textContent = (fact.title ? fact.title : (fact.curated ? "Source" : "Wikipedia")) + " \u2197";
-    node.setAttribute("aria-label", labelFor(fact.category) + " fact");
-    setActive(node, idx);
-  }
-
-  function setActive(node, idx) {
-    if (idx === state.ci) node.classList.add("is-active");
-    else node.classList.remove("is-active");
-  }
-
-  function render() {
-    var total = state.facts.length;
-    var H = getH();
-
-    if (total === 0) {
-      spacerTop.style.height = "0px";
-      spacerBottom.style.height = "0px";
-      for (var z = 0; z < pool.length; z++) { pool[z].style.display = "none"; pool[z].classList.remove("is-active"); }
-      updateChrome();
-      return;
-    }
-
-    var start = Math.max(0, Math.min(total - POOL_SIZE, state.ci - 2));
-    var end = Math.min(total, start + POOL_SIZE);
-
-    for (var i = 0; i < pool.length; i++) {
-      var node = pool[i];
-      var idx = start + i;
-      if (idx < end) { fillCard(node, state.facts[idx], idx); node.style.display = ""; }
-      else { node.style.display = "none"; node.classList.remove("is-active"); }
-    }
-
-    spacerTop.style.height = (start * H) + "px";
-    spacerBottom.style.height = (Math.max(0, (total - end) * H)) + "px";
-    state.windowStart = start;
-    updateChrome();
-  }
 
   function updateChrome() {
     var cur = state.facts[state.ci];
@@ -260,31 +282,22 @@
     }
   }
 
-  var rafPending = false;
-  function scheduleRender() {
-    if (rafPending) return;
-    rafPending = true;
-    requestAnimationFrame(function () { rafPending = false; render(); });
-  }
-
+  var trimPending = false;
   function onScroll() {
-    var H = getH();
-    var ci = Math.round(feed.scrollTop / H);
-    var total = state.facts.length;
-    if (total) ci = Math.max(0, Math.min(total - 1, ci));
-    if (ci !== state.ci) {
-      state.ci = ci;
-      scheduleRender();
-      ensureMore();
+    ensureMore();
+    if (!trimPending) {
+      trimPending = true;
+      requestAnimationFrame(function () { trimPending = false; trimIfLarge(); });
     }
   }
 
   function goTo(i, smooth) {
-    var H = getH();
     var total = state.facts.length;
     if (!total) return;
     i = Math.max(0, Math.min(total - 1, i));
-    feed.scrollTo({ top: i * H, behavior: smooth === false ? "auto" : "smooth" });
+    var top = (i - state.trimOffset) * cardH();
+    if (top < 0) top = 0;
+    feed.scrollTo({ top: top, behavior: smooth === false ? "auto" : "smooth" });
   }
 
   function toggleSaveCurrent() {
@@ -300,32 +313,14 @@
       hintEl.style.animation = "none";
       hintEl.style.opacity = "1";
       hintEl.style.visibility = "visible";
-      hintEl.textContent = "↑ ↓ browse \u00b7 Space next \u00b7 s save \u00b7 1-7 jump to topic";
+      hintEl.textContent = "\u2191 \u2193 browse \u00b7 Space next \u00b7 s save \u00b7 1-7 jump to topic";
       window.setTimeout(function () { hintEl.style.opacity = "0"; }, 2600);
     }
   }
 
-  /* ---------- Pool setup ---------- */
-
-  function createCardNode() {
-    var el = document.createElement("article");
-    el.className = "card";
-    el.innerHTML =
-      '<div class="card__inner">' +
-        '<span class="card__pill">Fact</span>' +
-        '<p class="card__text"></p>' +
-        '<a class="card__source" href="#" target="_blank" rel="noopener noreferrer">Source \u2197</a>' +
-      "</div>";
-    feed.insertBefore(el, spacerBottom);
-    return el;
-  }
-  var pool = [];
-  for (var k = 0; k < POOL_SIZE; k++) pool.push(createCardNode());
-
   /* ---------- Events ---------- */
 
   feed.addEventListener("scroll", onScroll, { passive: true });
-  window.addEventListener("resize", scheduleRender);
   window.addEventListener("online", function () { state.online = true; ensureMore(); });
   window.addEventListener("offline", function () { state.online = false; });
 
@@ -351,7 +346,7 @@
     } else if (key === "ArrowUp" || key === "k" || key === "PageUp" || (key === " " && e.shiftKey)) {
       e.preventDefault(); goTo(state.ci - 1);
     } else if (key === "Home") {
-      e.preventDefault(); goTo(0);
+      e.preventDefault(); goTo(state.trimOffset);
     } else if (key === "s" || key === "S") {
       e.preventDefault(); toggleSaveCurrent();
     } else if (key === "?" || key === "/") {
