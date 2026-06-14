@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d12">
+  <meta name="description" content="An infinite feed of bite-sized knowledge. Scroll, learn something small, move on.">
+  <title>Knowledge Feed</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230b0d12'/%3E%3Ctext x='50' y='72' font-size='62' text-anchor='middle' fill='%23e8e6e1' font-family='Georgia,serif'%3Ek%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <main id="feed" class="feed" aria-label="Knowledge feed">
+    <div id="spacer-top" class="spacer" aria-hidden="true"></div>
+    <div id="spacer-bottom" class="spacer" aria-hidden="true"></div>
+
+    <div id="empty" class="empty" hidden>
+      <p class="empty__title">No saved facts yet</p>
+      <p class="empty__sub">Tap the heart on any card to keep it here.</p>
+    </div>
+  </main>
+
+  <header class="chrome chrome--top">
+    <label class="filter">
+      <span class="filter__label">Topic</span>
+      <select id="category" aria-label="Filter by topic">
+        <option value="all">All topics</option>
+        <option value="science">Science</option>
+        <option value="history">History</option>
+        <option value="language">Language</option>
+        <option value="math">Math</option>
+        <option value="ideas">Ideas</option>
+        <option value="technology">Technology</option>
+        <option value="nature">Nature</option>
+      </select>
+    </label>
+
+    <button id="saved-view" class="iconbtn" type="button" aria-label="View saved facts" title="Saved facts">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+      <span id="saved-count" class="badge">0</span>
+    </button>
+  </header>
+
+  <footer class="chrome chrome--bottom">
+    <p id="counter" class="counter" aria-live="polite">1</p>
+    <button id="save-card" class="iconbtn iconbtn--save" type="button" aria-label="Save this fact" aria-pressed="false" disabled>
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+    </button>
+  </footer>
+
+  <div id="hint" class="hint">↑ ↓ to browse &middot; s to save &middot; ? for help</div>
+
+  <script src="facts.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
