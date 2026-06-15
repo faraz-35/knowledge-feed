@@ -51,7 +51,6 @@ cat > android/index.html <<HTM
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="refresh" content="0; url=knowledge-feed.apk?v=$APP_VERSION">
   <title>Download Knowledge Feed for Android</title>
   <style>
     body{background:#0b0d12;color:#e8e6e1;font-family:-apple-system,system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100dvh;margin:0;text-align:center;padding:2rem}
@@ -66,8 +65,16 @@ cat > android/index.html <<HTM
   <h1>Knowledge Feed</h1>
   <p class="ver">Android &middot; v$APP_VERSION</p>
   <p>Downloading the app&hellip;</p>
-  <p><a href="knowledge-feed.apk?v=$APP_VERSION">Tap here to download the APK</a></p>
+  <p><a id="dl" href="knowledge-feed.apk?v=$APP_VERSION">Tap here to download the APK</a></p>
   <p class="small">After it downloads, open it to install <strong>over</strong> the old version. If asked, allow &ldquo;Install unknown apps&rdquo; for your browser.</p>
+  <script>
+    (function () {
+      var url = "knowledge-feed.apk?v=$APP_VERSION&t=" + Date.now();
+      var dl = document.getElementById("dl");
+      if (dl) dl.href = url;
+      setTimeout(function () { try { location.replace(url); } catch (e) { location.href = url; } }, 400);
+    })();
+  </script>
 </body>
 </html>
 HTM
