@@ -3,6 +3,7 @@
 
   var SEED = window.SEED_FACTS || [];
   var SAVE_KEY = "kf:saved:v1";
+  var SEEN_KEY = "kf:seen:v1";
   var WIKI_ENDPOINT = "https://en.wikipedia.org/api/rest_v1/page/random/summary";
   var WIKI_BATCH = 3;
   var MAX_CARDS = 240;
@@ -33,14 +34,30 @@
     loading: false,
     online: navigator.onLine
   };
-  var deck = shuffle(seedForCategory("all"));
-
   function loadSaved() {
     try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || []; }
     catch (e) { return []; }
   }
   function persistSaved() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(state.saved)); } catch (e) {}
+  }
+  var seen = loadSeen();
+  var mounted = new Set();
+  function loadSeen() {
+    try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY)) || []); }
+    catch (e) { return new Set(); }
+  }
+  function persistSeen() {
+    try {
+      var arr = Array.from(seen);
+      if (arr.length > 8000) arr = arr.slice(arr.length - 8000);
+      localStorage.setItem(SEEN_KEY, JSON.stringify(arr));
+    } catch (e) {}
+  }
+  function markSeen(fact) {
+    if (!fact || fact.end || seen.has(fact.id)) return;
+    seen.add(fact.id);
+    persistSeen();
   }
   function isSaved(id) {
     for (var i = 0; i < state.saved.length; i++) if (state.saved[i].id === id) return true;
@@ -71,13 +88,9 @@
     return SEED.filter(function (f) { return cat === "all" ? true : f.category === cat; });
   }
   function takeSeed(n) {
-    var out = [];
-    while (out.length < n) {
-      if (deck.length === 0) deck = shuffle(seedForCategory(state.category));
-      var f = deck.shift();
-      if (f) out.push(f); else break;
-    }
-    return out;
+    var pool = seedForCategory(state.category).filter(function (f) { return !seen.has(f.id); });
+    if (!pool.length) return [];
+    return shuffle(pool).slice(0, n);
   }
 
   function trimWiki(t) {
@@ -93,10 +106,12 @@
     if (data.type === "disambiguation" || data.type === "no-extract" || data.type === "mainpage" || data.type === "related") return null;
     var text = trimWiki(data.extract);
     if (text.length < 60) return null;
+    var id = "wiki:" + (data.title || Math.random().toString(36).slice(2));
+    if (seen.has(id)) return null;
     var src = (data.content_urls && data.content_urls.desktop && data.content_urls.desktop.page) ||
               ("https://en.wikipedia.org/wiki/" + encodeURIComponent(data.title || ""));
     return {
-      id: "wiki:" + (data.title || Math.random().toString(36).slice(2)),
+      id: id,
       title: data.title || null,
       text: text,
       category: "random",
@@ -142,8 +157,10 @@
 
   function normHn(hit) {
     if (!hit || !hit.title) return null;
+    var id = "hn:" + hit.objectID;
+    if (seen.has(id)) return null;
     return {
-      id: "hn:" + hit.objectID,
+      id: id,
       title: "Hacker News",
       text: hit.title,
       category: "tech",
@@ -162,9 +179,11 @@
     if (!q || !q.quote) return null;
     var text = String(q.quote);
     if (text.length > 180) return null;
+    var id = "quote:" + q.id;
+    if (seen.has(id)) return null;
     var author = q.author || "Unknown";
     return {
-      id: "quote:" + q.id,
+      id: id,
       title: author,
       text: "\u201C" + text + "\u201D",
       category: "quote",
@@ -182,8 +201,10 @@
 
   function normNumber(d) {
     if (!d || !d.text || d.found === false) return null;
+    var id = "num:" + d.number + ":" + d.category;
+    if (seen.has(id)) return null;
     return {
-      id: "num:" + d.number + ":" + d.category,
+      id: id,
       title: "Number \u00b7 " + d.number,
       text: d.text,
       category: "number",
@@ -209,8 +230,10 @@
     var a = b64decode(r.correct_answer || "");
     var c = b64decode(r.category || "");
     if (q.length > 200) return null;
+    var id = "trivia:" + q.slice(0, 48);
+    if (seen.has(id)) return null;
     return {
-      id: "trivia:" + q.slice(0, 48),
+      id: id,
       title: c || "Trivia",
       text: q,
       answer: a,
@@ -264,6 +287,7 @@
         e.target.classList.add("is-active");
         var idx = +e.target.dataset.absIdx;
         if (idx !== state.ci) { state.ci = idx; updateChrome(); ensureMore(); }
+        markSeen(state.facts[idx]);
         break;
       }
     }
@@ -334,13 +358,21 @@
     for (var i = 0; i < cs.length; i++) { io.unobserve(cs[i]); cs[i].remove(); }
   }
 
-  function appendFacts(list) {
-    var seen = {};
-    for (var i = 0; i < state.facts.length; i++) seen[state.facts[i].id] = true;
+  function appendFacts(list, keepAll) {
+    var added = 0;
     for (var j = 0; j < list.length; j++) {
       var f = list[j];
-      if (f && !seen[f.id]) { state.facts.push(f); seen[f.id] = true; mountCard(f); }
+      if (!f) continue;
+      if (!keepAll) {
+        if (seen.has(f.id)) continue;
+        if (mounted.has(f.id)) continue;
+        mounted.add(f.id);
+      }
+      state.facts.push(f);
+      mountCard(f);
+      added++;
     }
+    return added;
   }
 
   function trimIfLarge() {
@@ -373,7 +405,16 @@
     }
   }
 
-  function showEmpty(yes) { if (emptyEl) emptyEl.hidden = !yes; }
+  function showEmpty(yes, title, sub) {
+    if (!emptyEl) return;
+    if (yes) {
+      if (title) { var t = emptyEl.querySelector(".empty__title"); if (t) t.textContent = title; }
+      if (sub) { var s = emptyEl.querySelector(".empty__sub"); if (s) s.textContent = sub; }
+      emptyEl.hidden = false;
+    } else {
+      emptyEl.hidden = true;
+    }
+  }
 
   function reset(mode, category) {
     state.mode = mode;
@@ -382,25 +423,32 @@
     state.facts = [];
     state.ci = 0;
     state.trimOffset = 0;
-    deck = shuffle(seedForCategory(state.category));
+    mounted = new Set();
 
     if (state.mode === "saved") {
       if (state.saved.length === 0) {
-        showEmpty(true);
+        showEmpty(true, "No saved facts yet", "Tap the heart on any card to keep it here.");
       } else {
         showEmpty(false);
-        appendFacts(state.saved.slice());
-        appendFacts([{ id: "__end__", end: true, category: "random" }]);
+        appendFacts(state.saved.slice(), true);
+        appendFacts([{ id: "__end__", end: true, category: "random" }], true);
       }
     } else {
-      showEmpty(false);
-      var initial = Math.min(seedForCategory(state.category).length, 11);
-      appendFacts(takeSeed(initial));
+      var unseen = seedForCategory(state.category).filter(function (f) { return !seen.has(f.id); });
+      appendFacts(takeSeed(Math.min(unseen.length, 11)));
+      if (state.facts.length === 0 && !state.online) {
+        showEmpty(true, "You're all caught up", "You've seen every offline fact. Reconnect for a fresh stream.");
+      } else {
+        showEmpty(false);
+      }
     }
 
     feed.scrollTop = 0;
     var first = feed.querySelector(".card");
-    if (first) first.classList.add("is-active");
+    if (first) {
+      first.classList.add("is-active");
+      markSeen(state.facts[0]);
+    }
     savedViewBtn.classList.toggle("is-active", state.mode === "saved");
     savedViewBtn.setAttribute("aria-label", state.mode === "saved" ? "Back to feed" : "View saved facts");
     updateChrome();
