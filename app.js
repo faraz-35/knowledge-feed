@@ -22,7 +22,6 @@
   var savedCountEl = document.getElementById("saved-count");
   var saveCardBtn = document.getElementById("save-card");
   var counterEl = document.getElementById("counter");
-  var hintEl = document.getElementById("hint");
 
   var state = {
     mode: "all",
@@ -159,12 +158,19 @@
     if (!hit || !hit.title) return null;
     var id = "hn:" + hit.objectID;
     if (seen.has(id)) return null;
+    var domain = "Hacker News";
+    var src = "https://news.ycombinator.com/item?id=" + hit.objectID;
+    if (hit.url) {
+      try { domain = new URL(hit.url).hostname.replace(/^www\./, ""); src = hit.url; } catch (e) {}
+    }
+    var label = domain + " \u00b7 " + (hit.points || 0) + " pts";
     return {
       id: id,
       title: "Hacker News",
       text: hit.title,
       category: "tech",
-      source: hit.url || ("https://news.ycombinator.com/item?id=" + hit.objectID),
+      source: src,
+      sourceLabel: label,
       curated: false
     };
   }
@@ -177,7 +183,7 @@
 
   function normQuote(q) {
     if (!q || !q.quote) return null;
-    var text = String(q.quote);
+    var text = String(q.quote).replace(/['\u2019]([A-Z])/g, function (m, c) { return m.charAt(0) + c.toLowerCase(); });
     if (text.length > 180) return null;
     var id = "quote:" + q.id;
     if (seen.has(id)) return null;
@@ -238,7 +244,7 @@
       text: q,
       answer: a,
       category: "trivia",
-      source: "https://opentdb.com/",
+      source: "https://www.google.com/search?q=" + encodeURIComponent(q),
       curated: false
     };
   }
@@ -343,7 +349,8 @@
     else { answer.textContent = ""; answer.style.display = "none"; }
     src.style.display = "";
     src.href = fact.source || "#";
-    src.textContent = (fact.title ? fact.title : (fact.curated ? "Source" : "Wikipedia")) + " \u2197";
+    var label = fact.sourceLabel || (fact.title ? fact.title : (fact.curated ? "Source" : "Wikipedia"));
+    src.textContent = label + " \u2197";
     el.setAttribute("aria-label", labelFor(fact.category) + " fact");
   }
 
@@ -499,16 +506,6 @@
     if (state.mode === "saved") reset("saved", "all");
   }
 
-  function showHelp() {
-    if (hintEl) {
-      hintEl.style.animation = "none";
-      hintEl.style.opacity = "1";
-      hintEl.style.visibility = "visible";
-      hintEl.textContent = "\u2191 \u2193 browse \u00b7 Space next \u00b7 s save \u00b7 1-7 jump to topic";
-      window.setTimeout(function () { hintEl.style.opacity = "0"; }, 2600);
-    }
-  }
-
   /* ---------- Events ---------- */
 
   feed.addEventListener("scroll", onScroll, { passive: true });
@@ -540,8 +537,6 @@
       e.preventDefault(); goTo(state.trimOffset);
     } else if (key === "s" || key === "S") {
       e.preventDefault(); toggleSaveCurrent();
-    } else if (key === "?" || key === "/") {
-      e.preventDefault(); showHelp();
     } else if (TOPIC_KEYS[key]) {
       var cat = TOPIC_KEYS[key];
       selCategory.value = cat;
@@ -557,48 +552,5 @@
     window.addEventListener("load", function () {
       navigator.serviceWorker.register("sw.js").catch(function () {});
     });
-  }
-
-  var installBtn = document.getElementById("install-btn");
-  var deferredPrompt = null;
-  var isStandalone = window.matchMedia("(display-mode: standalone)").matches ||
-                     window.matchMedia("(display-mode: minimal-ui)").matches ||
-                     window.navigator.standalone === true;
-
-  function showMenuHint() {
-    var existing = document.querySelector(".toast");
-    if (existing) existing.parentNode.removeChild(existing);
-    var t = document.createElement("div");
-    t.className = "toast";
-    t.innerHTML = "Install from your browser menu: \u2630 \u2192 <strong>Install</strong> / <strong>Add to Home screen</strong>";
-    document.body.appendChild(t);
-    window.setTimeout(function () { t.classList.add("toast--hide"); }, 3400);
-    window.setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 3900);
-  }
-
-  window.addEventListener("beforeinstallprompt", function (e) {
-    e.preventDefault();
-    deferredPrompt = e;
-    if (installBtn) installBtn.hidden = false;
-  });
-  if (installBtn && !isStandalone) {
-    installBtn.addEventListener("click", function () {
-      if (deferredPrompt) {
-        installBtn.hidden = true;
-        deferredPrompt.prompt();
-        deferredPrompt.userChoice.then(function () { deferredPrompt = null; }).catch(function () {});
-      } else {
-        showMenuHint();
-      }
-    });
-    window.addEventListener("appinstalled", function () {
-      installBtn.hidden = true;
-      deferredPrompt = null;
-    });
-    window.setTimeout(function () {
-      if (!deferredPrompt && installBtn.hidden) installBtn.hidden = false;
-    }, 5000);
-  } else if (installBtn) {
-    installBtn.hidden = true;
   }
 })();

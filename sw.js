@@ -1,4 +1,4 @@
-var CACHE = "kf-shell-v6";
+var CACHE = "kf-shell-v7";
 var SHELL = [
   "./",
   "./index.html",

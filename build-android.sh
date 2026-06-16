@@ -5,8 +5,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 APP=_capacitor
-APP_VERSION="1.3.0"
-VERSION_CODE="4"
+APP_VERSION="1.4.0"
+VERSION_CODE="5"
 WEB_FILES="index.html styles.css app.js facts.js manifest.webmanifest sw.js icon-192.png icon-512.png icon-512-maskable.png"
 
 if [ ! -d "$APP/node_modules" ]; then
