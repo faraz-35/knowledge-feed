@@ -100,9 +100,11 @@
     if (sp > 160) cut = cut.slice(0, sp);
     return cut + "\u2026";
   }
+  var SHOWBIZ = /\(song\)|\(single\)|\(album\)|\(ep\)|\(film\)|\(films\)|\(tv series\)|\(television series\)|\(video game\)|\(video games\)|\(novel\)|\(novella\)|\(band\)|\(musical\)|\(anime\)|\(manga\)|\(comic book\)|\(character\)|\(sitcom\)|\(reality show\)|song by|single by|album by|\bactor\b|\bactress\b|\bsinger\b|\bsongwriter\b|\brapper\b|\bmusician\b|rock band|boy band|girl group|television series|tv series|television presenter|video game|\banime\b|\bmanga\b|novel by|\bnovelist\b|fictional character|\byoutuber\b|\binfluencer\b|\bcelebrit|supermodel|fashion model|talk[- ]show|game[- ]show|soap opera|\bsitcom\b|\bgrammy\b|\boscar\b|\bemmy\b|\bbafta\b|\bcomedian\b|playwright|stage musical|film director|film producer|record label|\bdj\b|disc jockey|\bdancer\b|choreographer|\bfilm\b|\bfilms\b|\bmovie\b|\bmovies\b/i;
   function normalizeWiki(data) {
     if (!data || !data.extract) return null;
     if (data.type === "disambiguation" || data.type === "no-extract" || data.type === "mainpage" || data.type === "related") return null;
+    if (SHOWBIZ.test((data.title || "") + " " + (data.description || ""))) return null;
     var text = trimWiki(data.extract);
     if (text.length < 60) return null;
     var id = "wiki:" + (data.title || Math.random().toString(36).slice(2));
@@ -248,8 +250,10 @@
       curated: false
     };
   }
+  var TRIVIA_CATS = [9, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27, 28, 30];
   function fetchTriviaRaw() {
-    return fetch("https://opentdb.com/api.php?amount=10&type=multiple&encode=base64", { cache: "no-store" })
+    var cat = TRIVIA_CATS[Math.floor(Math.random() * TRIVIA_CATS.length)];
+    return fetch("https://opentdb.com/api.php?amount=10&category=" + cat + "&type=multiple&encode=base64", { cache: "no-store" })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) { return (j && j.results) ? j.results : []; })
       .catch(function () { return []; });
