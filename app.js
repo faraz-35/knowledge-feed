@@ -307,13 +307,22 @@
     };
   }
   function fetchNinjaFactRaw() {
-    return fetch("https://api.api-ninjas.com/v1/facts?limit=5", {
-      cache: "no-store",
-      headers: { "X-Api-Key": "YOUR_API_KEY_HERE" }
-    })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (j) { return Array.isArray(j) ? j : []; })
-      .catch(function () { return []; });
+    var tasks = [];
+    for (var i = 0; i < 5; i++) {
+      tasks.push(fetch("https://api.api-ninjas.com/v1/facts", {
+        cache: "no-store",
+        headers: { "X-Api-Key": "La0DxYXrAt2S3G1MsNeSioIUjamJ7XNqYEhM3m3B" }
+      })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .catch(function () { return null; }));
+    }
+    return Promise.all(tasks).then(function (arr) {
+      var out = [];
+      for (var i = 0; i < arr.length; i++) {
+        if (Array.isArray(arr[i])) out = out.concat(arr[i]);
+      }
+      return out;
+    });
   }
 
   var SOURCES = [
