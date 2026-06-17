@@ -12,7 +12,8 @@
   var LABELS = {
     science: "Science", history: "History", language: "Language", math: "Math",
     ideas: "Ideas", technology: "Technology", nature: "Nature", random: "Wikipedia",
-    tech: "Tech", trivia: "Trivia", quote: "Quote", number: "Number"
+    tech: "Tech", trivia: "Trivia", quote: "Quote", number: "Number",
+    onthisday: "On This Day"
   };
 
   var feed = document.getElementById("feed");
@@ -101,12 +102,22 @@
     return cut + "\u2026";
   }
   var SHOWBIZ = /\(song\)|\(single\)|\(album\)|\(ep\)|\(film\)|\(films\)|\(tv series\)|\(television series\)|\(video game\)|\(video games\)|\(novel\)|\(novella\)|\(band\)|\(musical\)|\(anime\)|\(manga\)|\(comic book\)|\(character\)|\(sitcom\)|\(reality show\)|song by|single by|album by|\bactor\b|\bactress\b|\bsinger\b|\bsongwriter\b|\brapper\b|\bmusician\b|rock band|boy band|girl group|television series|tv series|television presenter|video game|\banime\b|\bmanga\b|novel by|\bnovelist\b|fictional character|\byoutuber\b|\binfluencer\b|\bcelebrit|supermodel|fashion model|talk[- ]show|game[- ]show|soap opera|\bsitcom\b|\bgrammy\b|\boscar\b|\bemmy\b|\bbafta\b|\bcomedian\b|playwright|stage musical|film director|film producer|record label|\bdj\b|disc jockey|\bdancer\b|choreographer|\bfilm\b|\bfilms\b|\bmovie\b|\bmovies\b/i;
+  var DRY_BIO = /\bis an? (american|british|canadian|australian|indian|french|german|italian|spanish|japanese|chinese|korean|russian|brazilian|dutch|swedish|norwegian|danish|finnish|polish|turkish|egyptian|mexican|argentinian|colombian|south african|new zealand|irish|scottish|welsh) (actor|actress|singer|songwriter|rapper|musician|footballer|soccer|baseball|basketball|tennis|golfer|cricketer|youtuber|blogger|influencer|comedian|poet|novelist|author|director|producer|politician|minister|senator|governor|mayor|general|admiral|captain|professor|doctor|physician|surgeon|engineer|lawyer|judge|attorney|chef|manager|executive|ceo|president|chairman|founder|partner|representative|ambassador|diplomat|consultant|analyst|expert|scholar|teacher|tutor|coach|trainer|educator|therapist|nurse|pharmacist|dentist)/i;
+  var SPORTS = /\b(nfl|nba|mlb|nhl|pga|fifa|world cup|championship|grand prix|grand slam|playoff|tournament|medal|trophy|league|stadium|arena|pitch|scored|goals?|touchdowns?|home run|wickets?|birdie|hole.in.one|knockout|submission|decision)\b/i;
+  var GEOGRAPHY = /\bis a (city|town|village|county|municipality|district|province|state|region|island|river|mountain|lake|desert|forest|park|reserve)\b.*\b(in the|of the|located|situated|population|area of|square (kilometre|mile|metre|foot))\b/i;
   function normalizeWiki(data) {
     if (!data || !data.extract) return null;
     if (data.type === "disambiguation" || data.type === "no-extract" || data.type === "mainpage" || data.type === "related") return null;
-    if (SHOWBIZ.test((data.title || "") + " " + (data.description || ""))) return null;
+    var combined = (data.title || "") + " " + (data.description || "") + " " + (data.extract || "");
+    if (SHOWBIZ.test(combined)) return null;
+    if (DRY_BIO.test(combined)) return null;
+    if (SPORTS.test(combined)) return null;
+    if (GEOGRAPHY.test(data.extract)) return null;
     var text = trimWiki(data.extract);
     if (text.length < 60) return null;
+    if (/^list of\b/i.test(data.title || "")) return null;
+    if (/^index of\b/i.test(data.title || "")) return null;
+    if (/population|demographic|coordinates?|elevation|area code|postal code|iso code|zip code/i.test(text.slice(0, 120))) return null;
     var id = "wiki:" + (data.title || Math.random().toString(36).slice(2));
     if (seen.has(id)) return null;
     var src = (data.content_urls && data.content_urls.desktop && data.content_urls.desktop.page) ||
@@ -156,40 +167,14 @@
     };
   }
 
-  function normHn(hit) {
-    if (!hit || !hit.title) return null;
-    var id = "hn:" + hit.objectID;
-    if (seen.has(id)) return null;
-    var domain = "Hacker News";
-    var src = "https://news.ycombinator.com/item?id=" + hit.objectID;
-    if (hit.url) {
-      try { domain = new URL(hit.url).hostname.replace(/^www\./, ""); src = hit.url; } catch (e) {}
-    }
-    var label = domain + " \u00b7 " + (hit.points || 0) + " pts";
-    return {
-      id: id,
-      title: "Hacker News",
-      text: hit.title,
-      category: "tech",
-      source: src,
-      sourceLabel: label,
-      curated: false
-    };
-  }
-  function fetchHnRaw() {
-    return fetch("https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=30", { cache: "no-store" })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (j) { return (j && j.hits) ? j.hits : []; })
-      .catch(function () { return []; });
-  }
-
   function normQuote(q) {
-    if (!q || !q.quote) return null;
-    var text = String(q.quote).replace(/['\u2019]([A-Z])/g, function (m, c) { return m.charAt(0) + c.toLowerCase(); });
-    if (text.length > 180) return null;
-    var id = "quote:" + q.id;
+    if (!q || !q.q) return null;
+    var text = String(q.q);
+    if (text.length > 250) return null;
+    if (text.length < 15) return null;
+    var id = "quote:" + (q.a || "") + ":" + text.slice(0, 40);
     if (seen.has(id)) return null;
-    var author = q.author || "Unknown";
+    var author = q.a || "Unknown";
     return {
       id: id,
       title: author,
@@ -200,10 +185,9 @@
     };
   }
   function fetchQuoteRaw() {
-    var skip = Math.floor(Math.random() * 1400);
-    return fetch("https://dummyjson.com/quotes?limit=20&skip=" + skip, { cache: "no-store" })
+    return fetch("https://zenquotes.io/api/quotes", { cache: "no-store" })
       .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (j) { return (j && j.quotes) ? j.quotes : []; })
+      .then(function (j) { return Array.isArray(j) ? j : []; })
       .catch(function () { return []; });
   }
 
@@ -259,10 +243,74 @@
       .catch(function () { return []; });
   }
 
+  function stripHtml(s) {
+    return (s || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+  }
+  var WIKI_OTT_REJECT = /disambiguation|does not have an article/i;
+  var WIKI_OTT_BLACKLIST = /\b(sport|football|soccer|basketball|baseball|cricket|tennis|hockey|rugby|boxing|ufc|nfl|nba|mlb|nhl|pga|fifa|olympics?|world cup|championship|grand prix|grand slam|playoff|tournament|medal|trophy|league|club|stadium|arena|pitch)\b/i;
+  function normWikiOnThisDay(ev) {
+    if (!ev || !ev.text) return null;
+    var text = stripHtml(ev.text);
+    if (text.length < 30) return null;
+    if (WIKI_OTT_REJECT.test(text)) return null;
+    if (WIKI_OTT_BLACKLIST.test(text)) return null;
+    var year = ev.year || "";
+    var id = "ott:" + year + ":" + text.slice(0, 48);
+    if (seen.has(id)) return null;
+    var display = year ? year + " \u2014 " + text : text;
+    return {
+      id: id,
+      title: "On This Day",
+      text: display,
+      category: "history",
+      source: "https://en.wikipedia.org/wiki/" + encodeURIComponent(ev.page || "Portal:Current_events"),
+      curated: false
+    };
+  }
+  function fetchWikiOnThisDayRaw() {
+    var now = new Date();
+    var m = now.getMonth() + 1;
+    var d = now.getDate();
+    return fetch("https://en.wikipedia.org/api/rest_v1/feed/onthisday/all/" + m + "/" + d, { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j) return [];
+        var events = (j.selected || []).map(normWikiOnThisDay).filter(Boolean);
+        return events;
+      })
+      .catch(function () { return []; });
+  }
+
+  function normNinjaFact(item) {
+    if (!item || !item.fact) return null;
+    var text = String(item.fact).trim();
+    if (text.length < 30 || text.length > 300) return null;
+    var id = "ninja:" + text.slice(0, 48);
+    if (seen.has(id)) return null;
+    return {
+      id: id,
+      title: "Fact",
+      text: text,
+      category: "science",
+      source: "https://api-ninjas.com/",
+      curated: false
+    };
+  }
+  function fetchNinjaFactRaw() {
+    return fetch("https://api.api-ninjas.com/v1/facts?limit=5", {
+      cache: "no-store",
+      headers: { "X-Api-Key": "YOUR_API_KEY_HERE" }
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { return Array.isArray(j) ? j : []; })
+      .catch(function () { return []; });
+  }
+
   var SOURCES = [
     makeSource(fetchWikiRaw, normalizeWiki),
-    makeSource(fetchHnRaw, normHn),
     makeSource(fetchQuoteRaw, normQuote),
+    makeSource(fetchWikiOnThisDayRaw, normWikiOnThisDay),
+    makeSource(fetchNinjaFactRaw, normNinjaFact),
     makeSource(fetchTriviaRaw, normTrivia),
     makeSource(fetchNumbersRaw, normNumber)
   ];
