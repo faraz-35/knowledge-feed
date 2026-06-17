@@ -102,9 +102,11 @@
     return cut + "\u2026";
   }
   var SHOWBIZ = /\(song\)|\(single\)|\(album\)|\(ep\)|\(film\)|\(films\)|\(tv series\)|\(television series\)|\(video game\)|\(video games\)|\(novel\)|\(novella\)|\(band\)|\(musical\)|\(anime\)|\(manga\)|\(comic book\)|\(character\)|\(sitcom\)|\(reality show\)|song by|single by|album by|\bactor\b|\bactress\b|\bsinger\b|\bsongwriter\b|\brapper\b|\bmusician\b|rock band|boy band|girl group|television series|tv series|television presenter|video game|\banime\b|\bmanga\b|novel by|\bnovelist\b|fictional character|\byoutuber\b|\binfluencer\b|\bcelebrit|supermodel|fashion model|talk[- ]show|game[- ]show|soap opera|\bsitcom\b|\bgrammy\b|\boscar\b|\bemmy\b|\bbafta\b|\bcomedian\b|playwright|stage musical|film director|film producer|record label|\bdj\b|disc jockey|\bdancer\b|choreographer|\bfilm\b|\bfilms\b|\bmovie\b|\bmovies\b/i;
-  var DRY_BIO = /\bis an? (american|british|canadian|australian|indian|french|german|italian|spanish|japanese|chinese|korean|russian|brazilian|dutch|swedish|norwegian|danish|finnish|polish|turkish|egyptian|mexican|argentinian|colombian|south african|new zealand|irish|scottish|welsh) (actor|actress|singer|songwriter|rapper|musician|footballer|soccer|baseball|basketball|tennis|golfer|cricketer|youtuber|blogger|influencer|comedian|poet|novelist|author|director|producer|politician|minister|senator|governor|mayor|general|admiral|captain|professor|doctor|physician|surgeon|engineer|lawyer|judge|attorney|chef|manager|executive|ceo|president|chairman|founder|partner|representative|ambassador|diplomat|consultant|analyst|expert|scholar|teacher|tutor|coach|trainer|educator|therapist|nurse|pharmacist|dentist)/i;
+  var DRY_BIO = /\b(?:is|was|are|were) an? (american|british|canadian|australian|indian|french|german|italian|spanish|japanese|chinese|korean|russian|brazilian|dutch|swedish|norwegian|danish|finnish|polish|turkish|egyptian|mexican|argentinian|colombian|south african|new zealand|irish|scottish|welsh) (actor|actress|singer|songwriter|rapper|musician|footballer|soccer|baseball|basketball|tennis|golfer|cricketer|youtuber|blogger|influencer|comedian|poet|novelist|author|director|producer|politician|minister|senator|governor|mayor|general|admiral|captain|professor|doctor|physician|surgeon|engineer|lawyer|judge|attorney|chef|manager|executive|ceo|president|chairman|founder|partner|representative|ambassador|diplomat|consultant|analyst|expert|scholar|teacher|tutor|coach|trainer|educator|therapist|nurse|pharmacist|dentist|screenwriter|soprano|tenor|baritone|violinist|pianist|cellist|guitarist|drummer|bassist|composer|conductor|orchestra|opera|ballet|dancer|choreographer)/i;
   var SPORTS = /\b(nfl|nba|mlb|nhl|pga|fifa|world cup|championship|grand prix|grand slam|playoff|tournament|medal|trophy|league|stadium|arena|pitch|scored|goals?|touchdowns?|home run|wickets?|birdie|hole.in.one|knockout|submission|decision)\b/i;
   var GEOGRAPHY = /\bis a (city|town|village|county|municipality|district|province|state|region|island|river|mountain|lake|desert|forest|park|reserve)\b.*\b(in the|of the|located|situated|population|area of|square (kilometre|mile|metre|foot))\b/i;
+  var DRY_PATTERNS = /\b(species of|genus|family|order|class|phylum|kingdom|domain|bacterium|virus|algae|fungus|moth|beetle|spider|ant|wasp|bee|fly|mosquito|fish|lizard|snake|frog|toad|turtle|crab|shrimp|snail|clam|coral|sponge|worm)\b.*\b(found in|native to|distributed|endemic|inhabiting|described from)\b/i;
+  var INFRASTRUCTURE = /\b(railway station|train station|airport|bridge|highway|motorway|canal|dam|reservoir|power plant|factory|refinery|terminal|port|harbour|harbor)\b/i;
   function normalizeWiki(data) {
     if (!data || !data.extract) return null;
     if (data.type === "disambiguation" || data.type === "no-extract" || data.type === "mainpage" || data.type === "related") return null;
@@ -113,6 +115,8 @@
     if (DRY_BIO.test(combined)) return null;
     if (SPORTS.test(combined)) return null;
     if (GEOGRAPHY.test(data.extract)) return null;
+    if (DRY_PATTERNS.test(data.extract)) return null;
+    if (INFRASTRUCTURE.test(data.extract)) return null;
     var text = trimWiki(data.extract);
     if (text.length < 60) return null;
     if (/^list of\b/i.test(data.title || "")) return null;
@@ -134,7 +138,10 @@
   function fetchWikiRaw() {
     var tasks = [];
     for (var i = 0; i < 5; i++) {
-      tasks.push(fetch(WIKI_ENDPOINT, { cache: "no-store" })
+      tasks.push(fetch(WIKI_ENDPOINT, {
+        cache: "no-store",
+        headers: { "User-Agent": "KnowledgeFeed/1.0 (https://github.com/knowledge-feed)" }
+      })
         .then(function (r) { return r.ok ? r.json() : null; })
         .catch(function () { return null; }));
     }
@@ -247,7 +254,7 @@
     return (s || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
   }
   var WIKI_OTT_REJECT = /disambiguation|does not have an article/i;
-  var WIKI_OTT_BLACKLIST = /\b(sport|football|soccer|basketball|baseball|cricket|tennis|hockey|rugby|boxing|ufc|nfl|nba|mlb|nhl|pga|fifa|olympics?|world cup|championship|grand prix|grand slam|playoff|tournament|medal|trophy|league|club|stadium|arena|pitch)\b/i;
+  var WIKI_OTT_BLACKLIST = /\b(sport|football|soccer|basketball|baseball|cricket|tennis|hockey|rugby|boxing|ufc|nfl|nba|mlb|nhl|pga|fifa|olympics?|world cup|championship|grand prix|grand slam|playoff|tournament|medal|trophy|league|club|stadium|arena|pitch|shooting|massacre|bombing|attack|killed|deaths?|murder|assassination|execution|genocide|atrocit|siege|invasion|occupation|civil war|rebellion|uprising|riot|protest|revolution|coup|war)\b/i;
   function normWikiOnThisDay(ev) {
     if (!ev || !ev.text) return null;
     var text = stripHtml(ev.text);
@@ -271,7 +278,10 @@
     var now = new Date();
     var m = now.getMonth() + 1;
     var d = now.getDate();
-    return fetch("https://en.wikipedia.org/api/rest_v1/feed/onthisday/all/" + m + "/" + d, { cache: "no-store" })
+    return fetch("https://en.wikipedia.org/api/rest_v1/feed/onthisday/all/" + m + "/" + d, {
+      cache: "no-store",
+      headers: { "User-Agent": "KnowledgeFeed/1.0 (https://github.com/knowledge-feed)" }
+    })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) {
         if (!j) return [];
