@@ -93,32 +93,41 @@
     return shuffle(pool).slice(0, n);
   }
 
+  var SENT_SPLIT = /([.!?])\s+(?=[A-Z0-9\u201c"])/g;
   function trimWiki(t) {
-    t = (t || "").trim();
-    if (t.length <= 250) return t;
-    var cut = t.slice(0, 250);
-    var sp = cut.lastIndexOf(" ");
-    if (sp > 160) cut = cut.slice(0, sp);
-    return cut + "\u2026";
+    t = (t || "").replace(/\s+/g, " ").trim();
+    if (!t) return "";
+    var parts = t.replace(SENT_SPLIT, "$1\u0001").split("\u0001");
+    var take = parts.length <= 3 ? parts.length : 3;
+    var out = parts.slice(0, take).join(" ").trim();
+    if (out.length > 300) {
+      var cut = out.slice(0, 300);
+      var sp = cut.lastIndexOf(" ");
+      if (sp > 160) cut = out.slice(0, sp);
+      out = cut + "\u2026";
+    }
+    return out;
   }
   var SHOWBIZ = /\(song\)|\(single\)|\(album\)|\(ep\)|\(film\)|\(films\)|\(tv series\)|\(television series\)|\(video game\)|\(video games\)|\(novel\)|\(novella\)|\(band\)|\(musical\)|\(anime\)|\(manga\)|\(comic book\)|\(character\)|\(sitcom\)|\(reality show\)|song by|single by|album by|\bactor\b|\bactress\b|\bsinger\b|\bsongwriter\b|\brapper\b|\bmusician\b|rock band|boy band|girl group|television series|tv series|television presenter|video game|\banime\b|\bmanga\b|novel by|\bnovelist\b|fictional character|\byoutuber\b|\binfluencer\b|\bcelebrit|supermodel|fashion model|talk[- ]show|game[- ]show|soap opera|\bsitcom\b|\bgrammy\b|\boscar\b|\bemmy\b|\bbafta\b|\bcomedian\b|playwright|stage musical|film director|film producer|record label|\bdj\b|disc jockey|\bdancer\b|choreographer|\bfilm\b|\bfilms\b|\bmovie\b|\bmovies\b/i;
-  var DRY_BIO = /\b(?:is|was|are|were) an? (american|british|canadian|australian|indian|french|german|italian|spanish|japanese|chinese|korean|russian|brazilian|dutch|swedish|norwegian|danish|finnish|polish|turkish|egyptian|mexican|argentinian|colombian|south african|new zealand|irish|scottish|welsh) (actor|actress|singer|songwriter|rapper|musician|footballer|soccer|baseball|basketball|tennis|golfer|cricketer|youtuber|blogger|influencer|comedian|poet|novelist|author|director|producer|politician|minister|senator|governor|mayor|general|admiral|captain|professor|doctor|physician|surgeon|engineer|lawyer|judge|attorney|chef|manager|executive|ceo|president|chairman|founder|partner|representative|ambassador|diplomat|consultant|analyst|expert|scholar|teacher|tutor|coach|trainer|educator|therapist|nurse|pharmacist|dentist|screenwriter|soprano|tenor|baritone|violinist|pianist|cellist|guitarist|drummer|bassist|composer|conductor|orchestra|opera|ballet|dancer|choreographer)/i;
-  var SPORTS = /\b(nfl|nba|mlb|nhl|pga|fifa|world cup|championship|grand prix|grand slam|playoff|tournament|medal|trophy|league|stadium|arena|pitch|scored|goals?|touchdowns?|home run|wickets?|birdie|hole.in.one|knockout|submission|decision)\b/i;
-  var GEOGRAPHY = /\bis a (city|town|village|county|municipality|district|province|state|region|island|river|mountain|lake|desert|forest|park|reserve)\b.*\b(in the|of the|located|situated|population|area of|square (kilometre|mile|metre|foot))\b/i;
-  var DRY_PATTERNS = /\b(species of|genus|family|order|class|phylum|kingdom|domain|bacterium|virus|algae|fungus|moth|beetle|spider|ant|wasp|bee|fly|mosquito|fish|lizard|snake|frog|toad|turtle|crab|shrimp|snail|clam|coral|sponge|worm)\b.*\b(found in|native to|distributed|endemic|inhabiting|described from)\b/i;
+  var DRY_BIO = /\b(?:is|was|are|were)\s+(?:a|an)\s+(?:[\w-]+\s+){0,3}(?:actor|actress|singer|songwriter|rapper|musician|footballer|soccer|baseball|basketball|tennis|golfer|cricketer|youtuber|blogger|influencer|comedian|poet|novelist|author|director|producer|politician|minister|senator|governor|mayor|general|admiral|captain|professor|doctor|physician|surgeon|engineer|lawyer|judge|attorney|chef|manager|executive|ceo|chairman|founder|partner|representative|ambassador|diplomat|consultant|analyst|teacher|tutor|coach|trainer|therapist|nurse|pharmacist|dentist|screenwriter|soprano|tenor|violinist|pianist|cellist|guitarist|drummer|composer|conductor|dancer|choreographer|model|fashion designer|beauty pageant)/i;
+  var SPORTS = /\b(nfl|nba|mlb|nhl|pga|fifa|uefa|world cup|championship|grand prix|grand slam|playoffs?|tournament|medals?|trophy|league|stadium|arena|sports?|football|soccer|basketball|baseball|cricket|tennis|hockey|rugby|boxing|ufc|olympics?|olympian|pitcher|touchdowns?|home run|wickets?|birdie|bogey|knockout|submission|golfers?|\bgolf\b|marathon|racer|racing|drivers?)\b/i;
+  var GEOGRAPHY = /\b(?:is a|is the)\s+(?:city|town|village|county|municipality|district|province|state|region|island|river|mountain|range|lake|desert|forest|park|reserve|commune|borough|settlement|prefecture|parish)\b|\b(population of|capital of|located in|situated in|administrative|census-designated|metropolitan area|in the province|seat of|covers an area)\b/i;
+  var DRY_PATTERNS = /\b(?:species of|genus|subgenus|subspecies|family of|order of|bacterium|fungus|algae|moth|beetle|spider|insect|crustacean|gastropod)\b|\b(native to|endemic to|distributed in|inhabits|found in the|described in)\b/i;
   var INFRASTRUCTURE = /\b(railway station|train station|airport|bridge|highway|motorway|canal|dam|reservoir|power plant|factory|refinery|terminal|port|harbour|harbor)\b/i;
+  var VIOLENCE = /\b(shootings?|mass shooting|massacre|bombing|explosion|killed|murder|murdered|assassination|execution|genocide|atrocity|atrocities|siege|invasion|occupation|rebellion|uprising|riots?|protests?|revolution|coup|serial killer|terrorist|terrorism|warlord|militia|casualt|fatalit|wounded|slain|gunman|attack|deaths?|death toll|civil war|armed conflict|hostage)\b/i;
+  var NEWS_STUBS = /\b(elections?|elected|incumbent|candidate|campaign|ballot|primary election|headquartered|co-founded|subsidiary of|acquired by|merged with|stock exchange|publicly traded|bankruptcy|filed for|restructuring|conglomerate|\bipo\b|initial public offering)\b/i;
+  function isWikiDry(text) {
+    return SHOWBIZ.test(text) || DRY_BIO.test(text) || SPORTS.test(text)
+        || GEOGRAPHY.test(text) || DRY_PATTERNS.test(text) || INFRASTRUCTURE.test(text);
+  }
   function normalizeWiki(data) {
     if (!data || !data.extract) return null;
     if (data.type === "disambiguation" || data.type === "no-extract" || data.type === "mainpage" || data.type === "related") return null;
     var combined = (data.title || "") + " " + (data.description || "") + " " + (data.extract || "");
-    if (SHOWBIZ.test(combined)) return null;
-    if (DRY_BIO.test(combined)) return null;
-    if (SPORTS.test(combined)) return null;
-    if (GEOGRAPHY.test(data.extract)) return null;
-    if (DRY_PATTERNS.test(data.extract)) return null;
-    if (INFRASTRUCTURE.test(data.extract)) return null;
+    if (isWikiDry(combined) || VIOLENCE.test(combined) || NEWS_STUBS.test(combined)) return null;
     var text = trimWiki(data.extract);
     if (text.length < 60) return null;
+    if (!/[.!?]/.test(text)) return null;
     if (/^list of\b/i.test(data.title || "")) return null;
     if (/^index of\b/i.test(data.title || "")) return null;
     if (/population|demographic|coordinates?|elevation|area code|postal code|iso code|zip code/i.test(text.slice(0, 120))) return null;
@@ -137,7 +146,7 @@
   }
   function fetchWikiRaw() {
     var tasks = [];
-    for (var i = 0; i < 5; i++) {
+    for (var i = 0; i < 6; i++) {
       tasks.push(fetch(WIKI_ENDPOINT, {
         cache: "no-store",
         headers: { "User-Agent": "KnowledgeFeed/1.0 (https://github.com/knowledge-feed)" }
@@ -254,13 +263,12 @@
     return (s || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
   }
   var WIKI_OTT_REJECT = /disambiguation|does not have an article/i;
-  var WIKI_OTT_BLACKLIST = /\b(sport|football|soccer|basketball|baseball|cricket|tennis|hockey|rugby|boxing|ufc|nfl|nba|mlb|nhl|pga|fifa|olympics?|world cup|championship|grand prix|grand slam|playoff|tournament|medal|trophy|league|club|stadium|arena|pitch|shooting|massacre|bombing|attack|killed|deaths?|murder|assassination|execution|genocide|atrocit|siege|invasion|occupation|civil war|rebellion|uprising|riot|protest|revolution|coup|war)\b/i;
   function normWikiOnThisDay(ev) {
     if (!ev || !ev.text) return null;
     var text = stripHtml(ev.text);
     if (text.length < 30) return null;
     if (WIKI_OTT_REJECT.test(text)) return null;
-    if (WIKI_OTT_BLACKLIST.test(text)) return null;
+    if (isWikiDry(text) || VIOLENCE.test(text)) return null;
     var year = ev.year || "";
     var id = "ott:" + year + ":" + text.slice(0, 48);
     if (seen.has(id)) return null;
