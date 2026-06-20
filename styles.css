@@ -15,6 +15,8 @@
   --c-technology: #6aa8ff;
   --c-nature: #8fd06a;
   --c-random: #9aa3b2;
+  --c-poem: #f4c95d;
+  --c-featured: #d7c9a3;
 
   --serif: "Iowan Old Style", "Palatino Linotype", "Charter", Georgia, "Times New Roman", serif;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -105,6 +107,8 @@ body { overflow: hidden; }
 .card__pill[data-category="trivia"]     { --pill-c: #f5a623; }
 .card__pill[data-category="quote"]      { --pill-c: #c490e4; }
 .card__pill[data-category="number"]     { --pill-c: #4ec9b0; }
+.card__pill[data-category="poem"]       { --pill-c: var(--c-poem); }
+.card__pill[data-category="featured"]   { --pill-c: var(--c-featured); }
 
 .card__text {
   font-family: var(--serif);

@@ -13,7 +13,7 @@
     science: "Science", history: "History", language: "Language", math: "Math",
     ideas: "Ideas", technology: "Technology", nature: "Nature", random: "Wikipedia",
     tech: "Tech", trivia: "Trivia", quote: "Quote", number: "Number",
-    onthisday: "On This Day"
+    onthisday: "On This Day", poem: "Poem", featured: "Today's Article"
   };
 
   var feed = document.getElementById("feed");
@@ -155,6 +155,32 @@
         .catch(function () { return null; }));
     }
     return Promise.all(tasks).then(function (arr) { return arr.filter(Boolean); });
+  }
+
+  function normWikiTFA(data) {
+    if (!data || !data.extract) return null;
+    if (data.type === "disambiguation" || data.type === "no-extract" || data.type === "mainpage" || data.type === "related") return null;
+    var text = trimWiki(data.extract);
+    if (text.length < 60) return null;
+    if (!/[.!?]/.test(text)) return null;
+    var id = "tfa:" + (data.title || Math.random().toString(36).slice(2));
+    if (seen.has(id)) return null;
+    var src = (data.content_urls && data.content_urls.desktop && data.content_urls.desktop.page) ||
+              ("https://en.wikipedia.org/wiki/" + encodeURIComponent(data.title || ""));
+    return { id: id, title: data.title || null, text: text, category: "featured", source: src, curated: true };
+  }
+  function fetchWikiTFARaw() {
+    var now = new Date();
+    var y = now.getFullYear();
+    var m = ("0" + (now.getMonth() + 1)).slice(-2);
+    var d = ("0" + now.getDate()).slice(-2);
+    return fetch("https://en.wikipedia.org/api/rest_v1/feed/featured/" + y + "/" + m + "/" + d, {
+      cache: "no-store",
+      headers: { "User-Agent": "KnowledgeFeed/1.0 (https://github.com/knowledge-feed)" }
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { return (j && j.tfa) ? [j.tfa] : []; })
+      .catch(function () { return []; });
   }
 
   function makeSource(fetchRemote, normalize) {
@@ -333,10 +359,131 @@
     });
   }
 
+  function normPoem(p) {
+    if (!p || !p.lines || !p.lines.length) return null;
+    var take = p.lines.length > 4 ? 4 : p.lines.length;
+    var text = p.lines.slice(0, take).join(" / ").trim();
+    if (p.lines.length > 4) text += " \u2026";
+    if (text.length < 15 || text.length > 300) return null;
+    var id = "poem:" + (p.author || "") + ":" + (p.title || "") + ":" + p.lines[0].slice(0, 40);
+    if (seen.has(id)) return null;
+    var who = p.author || "Unknown";
+    return {
+      id: id,
+      title: (p.title ? p.title + " \u2014 " : "") + who,
+      text: text,
+      category: "poem",
+      source: "https://en.wikipedia.org/wiki/Special:Search?search=" + encodeURIComponent(who + " " + (p.title || "")),
+      curated: false
+    };
+  }
+  function fetchPoemRaw() {
+    return fetch("https://poetrydb.org/random/6", { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { return Array.isArray(j) ? j : []; })
+      .catch(function () { return []; });
+  }
+
+  var DICT_WORDS = ["serendipity","quarantine","robot","panic","nostalgia","assassin","disaster","muscle","companion","salary","clue","nemesis","goodbye","nightmare","sarcophagus","typhoon","banana","alcohol","coffee","sugar","magazine","safari","khaki","pajamas","shampoo","thug","boss","kudos","museum","academy","echo","tantalize","marathon","boycott","guillotine","sandwich","silhouette","leotard","cardigan","denim","bikini","pamphlet","slogan","whiskey","vodka","ketchup","chocolate","avocado","coconut","mosquito","kangaroo","panda","penguin","gorilla","jumbo","dinosaur","fossil","android","cyber","algorithm","algebra","zero","cipher","checkmate","gymnasium","drama","comedy","music","rhythm","melody","symphony","philosophy","logic","paper","gospel","angel","devil","paradise","magic","pandemonium","escapade","avalanche","hurricane","tsunami","volcano","glacier","oasis","mirage","compass","anchor","galaxy","nebula","quasar","zenith","horizon","odyssey","utopia","dystopia"];
+  function normDict(r) {
+    if (!r || !r.entry || !r.word) return null;
+    var e = r.entry;
+    var pos = (e.meanings && e.meanings[0] && e.meanings[0].partOfSpeech) || "";
+    var def = (e.meanings && e.meanings[0] && e.meanings[0].definitions && e.meanings[0].definitions[0] && e.meanings[0].definitions[0].definition) || "";
+    if (!def) return null;
+    var text = r.word + (pos ? " (" + pos + ")" : "") + ": " + def;
+    text = trimWiki(text);
+    if (text.length < 20) return null;
+    var id = "dict:" + r.word;
+    if (seen.has(id)) return null;
+    return {
+      id: id,
+      title: r.word,
+      text: text,
+      category: "language",
+      source: "https://en.wiktionary.org/wiki/" + encodeURIComponent(r.word),
+      curated: false
+    };
+  }
+  function fetchDictRaw() {
+    var w = DICT_WORDS[Math.floor(Math.random() * DICT_WORDS.length)];
+    return fetch("https://api.dictionaryapi.dev/api/v2/entries/en/" + encodeURIComponent(w), { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { return (Array.isArray(j) && j.length) ? [{ word: w, entry: j[0] }] : []; })
+      .catch(function () { return []; });
+  }
+
+  function normAnimal(r) {
+    if (!r || !r.text) return null;
+    var t = String(r.text).trim();
+    if (t.length < 30 || t.length > 300) return null;
+    var id = "animal:" + r.kind + ":" + t.slice(0, 48);
+    if (seen.has(id)) return null;
+    return {
+      id: id,
+      title: r.kind === "cat" ? "Cat Fact" : "Dog Fact",
+      text: t,
+      category: "nature",
+      source: r.kind === "cat" ? "https://catfact.ninja/" : "https://dog-api.kinduff.com/",
+      curated: false
+    };
+  }
+  function fetchAnimalRaw() {
+    var cats = [];
+    for (var i = 0; i < 3; i++) {
+      cats.push(fetch("https://catfact.ninja/fact", { cache: "no-store" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (f) { return f && f.fact ? [{ kind: "cat", text: f.fact }] : []; })
+        .catch(function () { return []; }));
+    }
+    var dogs = fetch("https://dog-api.kinduff.com/api/facts", { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (f) { return (f && Array.isArray(f.facts)) ? f.facts.map(function (t) { return { kind: "dog", text: t }; }) : []; })
+      .catch(function () { return []; });
+    return Promise.all([Promise.all(cats).then(function (a) { return a.reduce(function (x, y) { return x.concat(y); }, []); }), dogs])
+      .then(function (p) { return p[0].concat(p[1]); });
+  }
+
+  function normLight(r) {
+    if (!r) return null;
+    if (r.kind === "advice") {
+      var t = String(r.text || "").trim();
+      if (t.length < 15 || t.length > 200) return null;
+      var id = "advice:" + t.slice(0, 48);
+      if (seen.has(id)) return null;
+      return { id: id, title: "Advice", text: t, category: "ideas", source: "https://api.adviceslip.com/", curated: false };
+    }
+    if (r.kind === "joke") {
+      var q = String(r.setup || "").trim();
+      var a = String(r.punch || "").trim();
+      if (q.length < 10 || q.length > 200) return null;
+      var id2 = "joke:" + q.slice(0, 48);
+      if (seen.has(id2)) return null;
+      return { id: id2, title: "Joke", text: q, answer: a, category: "trivia", source: "https://github.com/15Dkatz/official_joke_api", curated: false };
+    }
+    return null;
+  }
+  function fetchLightRaw() {
+    var adv = fetch("https://api.adviceslip.com/advice", { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { return (j && j.slip && j.slip.advice) ? [{ kind: "advice", text: j.slip.advice }] : []; })
+      .catch(function () { return []; });
+    var jok = fetch("https://official-joke-api.appspot.com/random_joke", { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { return (j && j.setup && j.punchline) ? [{ kind: "joke", setup: j.setup, punch: j.punchline }] : []; })
+      .catch(function () { return []; });
+    return Promise.all([adv, jok]).then(function (p) { return p[0].concat(p[1]); });
+  }
+
   var SOURCES = [
     makeSource(fetchWikiRaw, normalizeWiki),
-    makeSource(fetchQuoteRaw, normQuote),
+    makeSource(fetchWikiTFARaw, normWikiTFA),
     makeSource(fetchWikiOnThisDayRaw, normWikiOnThisDay),
+    makeSource(fetchQuoteRaw, normQuote),
+    makeSource(fetchPoemRaw, normPoem),
+    makeSource(fetchDictRaw, normDict),
+    makeSource(fetchAnimalRaw, normAnimal),
+    makeSource(fetchLightRaw, normLight),
     makeSource(fetchNinjaFactRaw, normNinjaFact),
     makeSource(fetchTriviaRaw, normTrivia),
     makeSource(fetchNumbersRaw, normNumber)
